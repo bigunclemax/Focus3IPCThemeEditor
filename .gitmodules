@@ -1,0 +1,6 @@
+[submodule "FTools"]
+	path = FTools
+	url = https://github.com/bigunclemax/FTools.git
+[submodule "cmake-git-version-tracking"]
+	path = cmake-git-version-tracking
+	url = git@github.com:andrew-hardin/cmake-git-version-tracking.git
