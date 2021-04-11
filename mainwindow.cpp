@@ -64,7 +64,7 @@ Date: %2
             auto& picture = images[picture_idx];
 
             auto store_path = QFileDialog::getSaveFileName(this, tr("Export images"),
-                                                           fs::path(picture.name).replace_extension(".bmp").c_str(),
+                                                           fs::path(picture.name).replace_extension(".bmp").string().c_str(),
                                                            tr("BMP image (*.bmp);;All Files (*)"));
 
             if (store_path.isEmpty()) return;
@@ -354,7 +354,7 @@ void MainWindow::enableGui(bool doEnable) {
 
 void MainWindow::unpackFinished() {
 
-    if (not future.result().isEmpty()) {
+    if (!future.result().isEmpty()) {
         QMessageBox(QMessageBox::Warning,
                     "", future.result(), QMessageBox::Ok, this).exec();
         ui->label_Status->setText(QString("Error"));
