@@ -251,14 +251,14 @@ QString MainWindow::unpackVBF() {
         std::string eif_name;
         auto eif_data = unzipEIF(img_zip_bin, &eif_name);
 
-        picture.eif = EIF::EifConverter::makeEif(eif_data);
+        picture.eif = EIF::EifConverter::makeEif(static_cast<EIF::EIF_TYPE>(eif_data[7]));
+        picture.eif->openEif(eif_data);
         auto bitmap = picture.eif->getBitmapRBGA();
 
         picture.image_pixmap = QPixmap::fromImage(
                 QImage(bitmap.data(), picture.eif->getWidth(), picture.eif->getHeight(),
                        QImage::Format_RGBA8888).convertToFormat(QImage::Format_ARGB32));
 
-        // FIXME: avoid of directly access to eif binary data
         if (picture.eif->getType() == EIF_TYPE_MULTICOLOR) {
             auto crc16 = CRC::Calculate((char *) eif_data.data() + 0x10, 768, CRC::CRC_16_CCITTFALSE());
             picture.palette_crc = crc16;
