@@ -29,6 +29,8 @@ Date: %2
         QMessageBox::about(this, "Ford focus mk 3.* IPC theme editor", about_str);
     });
 
+    connect(&watcherPack, &QFutureWatcher<int>::finished, this, &MainWindow::packFinished);
+    connect(&watcherReplace, &QFutureWatcher<int>::finished, this, &MainWindow::replaceFinished);
     connect(&watcherUnpack, &QFutureWatcher<int>::finished, this, &MainWindow::unpackFinished);
     connect(&watcherExportAll, &QFutureWatcher<int>::finished, this, &MainWindow::exportFinished);
     connect(this, &MainWindow::progressChanged, this, &MainWindow::onProgressChanged);
@@ -97,8 +99,8 @@ Date: %2
             enableGui(false);
 
             ui->label_Status->setText("Replacing picture...");
-            future = QtConcurrent::run(this, &MainWindow::ReplacePicture, picture_idx, new_picture_path);
-            watcherUnpack.setFuture(future);
+            futureReplace = QtConcurrent::run(this, &MainWindow::ReplacePicture, picture_idx, new_picture_path);
+            watcherReplace.setFuture(futureReplace);
 
         } catch (const std::runtime_error& ex) {
             QMessageBox(QMessageBox::Information,
@@ -169,7 +171,11 @@ void MainWindow::slotClose() {
 void MainWindow::slotSave() {
 
     if (vbf.IsOpen()) {
-        vbf.SaveToFile(vbfPath.toStdString());
+
+        enableGui(false);
+        ui->label_Status->setText("Saving...");
+        futurePack = QtConcurrent::run(this, &MainWindow::packVBF, vbfPath);
+        watcherPack.setFuture(futurePack);
     }
 }
 
@@ -182,7 +188,10 @@ void MainWindow::slotSaveAs() {
 
         if (store_path.isEmpty()) return;
 
-        vbf.SaveToFile(store_path.toStdString());
+        enableGui(false);
+        ui->label_Status->setText("Saving...");
+        futurePack = QtConcurrent::run(this, &MainWindow::packVBF, store_path);
+        watcherPack.setFuture(futurePack);
     }
 }
 
@@ -352,15 +361,7 @@ void MainWindow::enableGui(bool doEnable) {
     ui->actionClose->setEnabled(doEnable);
 }
 
-void MainWindow::unpackFinished() {
-
-    if (!future.result().isEmpty()) {
-        QMessageBox(QMessageBox::Warning,
-                    "", future.result(), QMessageBox::Ok, this).exec();
-        ui->label_Status->setText(QString("Error"));
-        enableGui(true);
-        return;
-    }
+void MainWindow::reloadGui() {
 
     ui->lw->clear();
     ui->label_Status->setText(QString("Done"));
@@ -371,14 +372,51 @@ void MainWindow::unpackFinished() {
         newItem->setText(picture.second.name.c_str());
         ui->lw->addItem(newItem);
     }
+}
+
+void MainWindow::unpackFinished() {
+
+    if (!future.result().isEmpty()) {
+        QMessageBox(QMessageBox::Warning,
+                    "", future.result(), QMessageBox::Ok, this).exec();
+        ui->label_Status->setText(QString("Error"));
+        enableGui(true);
+        return;
+    }
+
+    reloadGui();
 
     enableGui(true);
+}
+
+void MainWindow::replaceFinished() {
+
+    const auto &res = futureReplace.result();
+
+    if (not res.second.isEmpty()) {
+        QMessageBox(QMessageBox::Warning,
+                    "", res.second, QMessageBox::Ok, this).exec();
+        ui->label_Status->setText(QString("Replace error"));
+        enableGui(true);
+        return;
+    }
+
+    /* colorize line */
+    ui->lw->item(res.first)->setBackground(Qt::gray);
+
+    /* reload image */
+    auto& picture = images[res.first];
+    label = new QLabel();
+    label->setPixmap(picture.image_pixmap);
+    scrollArea->setWidget(label);
+
+    enableGui(true);
+    ui->label_Status->setText(QString("Done"));
 }
 
 void MainWindow::exportFinished() {
 
     enableGui(true);
-
     ui->label_Status->setText(QString("Done"));
 }
 
@@ -399,57 +437,52 @@ int MainWindow::exportAll(const QString &dest_dir) {
     return 0;
 }
 
-QString MainWindow::ReplacePicture(int picture_idx, const QString &new_picture_path) {
+QPair<int, QString> MainWindow::ReplacePicture(int picture_idx, const QString &new_picture_path) {
 
-    try {
-        auto& orig_picture = images[picture_idx];
+    auto& picture = images[picture_idx];
 
-        std::vector<uint8_t> img_sec_bin;
-        if(vbf.GetSectionRaw(1, img_sec_bin)) {
-            throw runtime_error("Can't get image section");
-        }
+    auto new_eif = EIF::EifConverter::makeEif(static_cast<EIF::EIF_TYPE>(picture.type));
 
-        ImageSection section;
-        section.Parse(img_sec_bin);
+    new_eif->openBmp(new_picture_path.toStdString());
 
-        // Pack new BMP image to EIF
-        EIF::EifImageBase* new_eif;
-        if (orig_picture.type == EIF_TYPE_MONOCHROME) {
-            new_eif = new EIF::EifImage8bit();
-        } else if (orig_picture.type == EIF_TYPE_SUPERCOLOR) {
-            new_eif = new EIF::EifImage32bit();
-        } else if (orig_picture.type == EIF_TYPE_MULTICOLOR) {
-            new_eif = new EIF::EifImage16bit();
-        } else {
-            throw runtime_error("Unknown resource type");
-        }
-        new_eif->openBmp(new_picture_path.toStdString());
+    if (new_eif->getWidth() != picture.width || new_eif->getHeight() != picture.height) {
+        throw runtime_error("Replaced picture size mismatch");
+    }
 
-        if (new_eif->getWidth() != orig_picture.width || new_eif->getHeight() != orig_picture.height) {
-            throw runtime_error("Replaced picture size mismatch");
-        }
+    picture.eif = std::move(new_eif);
+    auto bitmap = picture.eif->getBitmapRBGA();
+    picture.image_pixmap = QPixmap::fromImage(
+            QImage(bitmap.data(), picture.eif->getWidth(), picture.eif->getHeight(),
+                   QImage::Format_RGBA8888).convertToFormat(QImage::Format_ARGB32));
+    picture.changed = true;
 
-        vector<EIF::EifImage16bit> eifs_set; // used only for 16bit EIFs
+    return {picture_idx, ""};
+}
 
-        struct sMod_pic_desc {
-            int index{};
-            string name;
-            const EIF::EifImageBase *eif{};
-        };
-        vector<sMod_pic_desc> modified_pictures;
+QString MainWindow::packVBF(const QString &path) {
+
+    // get an image section
+    std::vector<uint8_t> img_sec_bin;
+    if(vbf.GetSectionRaw(1, img_sec_bin)) {
+        throw runtime_error("Can't get image section");
+    }
+    ImageSection section;
+    section.Parse(img_sec_bin);
+
+    // find a changed pictures
+    for (auto &it : images) {
+
+        if (!it.second.changed) continue;
+
+        auto &orig_picture = it.second;
 
         if (0 == orig_picture.palette_crc) {
             // replaced pic is 8 or 32 bit eif
             // no additional actions required
             // just make eif from bmp and replace the
             // original pic
-
-            sMod_pic_desc new_pic_desc;
-            new_pic_desc.index = orig_picture.index;
-            new_pic_desc.name  = orig_picture.name;
-            new_pic_desc.eif   = new_eif;
-
-            modified_pictures.emplace_back(std::move(new_pic_desc));
+            CompressAndReplaceEIF(section, orig_picture.index, orig_picture.eif->saveEifToVector(), orig_picture.name);
+            orig_picture.changed = false;
 
         } else {
             // replaced pic is definitely 16 bit eif.
@@ -458,53 +491,41 @@ QString MainWindow::ReplacePicture(int picture_idx, const QString &new_picture_p
 
 
             // find all pictures with the same palette
-            for (const auto &it :images) {
-                const auto & picture = it.second;
+            vector<EIF::EifImage16bit> eifs_set;
+            vector<int> eifs_set_indexes;
+
+            for (auto &itt :images) {
+                auto & picture = itt.second;
                 if(picture.palette_crc == orig_picture.palette_crc) {
-
-                    sMod_pic_desc new_pic_desc;
-                    new_pic_desc.index = picture.index;
-                    new_pic_desc.name  = picture.name;
-                    if (picture.index != orig_picture.index) {
-                        // leave original eif data
-                        eifs_set.push_back(*reinterpret_cast<const EIF::EifImage16bit *>(picture.eif.get()));
-                    } else {
-                        // use new eif data
-                        eifs_set.push_back(*reinterpret_cast<const EIF::EifImage16bit *>(new_eif));  // 🤢
-                    }
-                    new_pic_desc.eif = &eifs_set.back(); //fixup pointer
-
-                    modified_pictures.emplace_back(std::move(new_pic_desc));
+                    picture.changed = false;
+                    eifs_set_indexes.push_back(picture.index);
+                    eifs_set.push_back(*reinterpret_cast<const EIF::EifImage16bit *>(picture.eif.get())); // 🤢
                 }
             }
 
             // calc new 'multipalette'
             EIF::EifConverter::mapMultiPalette(eifs_set);
 
-            // fixup pointers
-            for (int i=0; i < modified_pictures.size(); ++i) {
-                modified_pictures[i].eif = &eifs_set[i]; // 🤢
+            for (int i =0; i < eifs_set.size(); ++i) {
+                auto eif_idx = eifs_set_indexes[i];
+                progressChanged({i, (int)eifs_set.size()});
+                CompressAndReplaceEIF(section, eif_idx, eifs_set[i].saveEifToVector(), images[eif_idx].name);
             }
         }
-
-        int i = 0, modded_count = modified_pictures.size();
-        for (const auto &mod_pic : modified_pictures) {
-            progressChanged({++i, modded_count});
-            CompressAndReplaceEIF(section, mod_pic.index, mod_pic.eif->saveEifToVector(), mod_pic.name);
-        }
-
-        delete new_eif; //TODO:
-
-        section.SaveToVector(img_sec_bin);
-
-        //replace vbf image content
-        vbf.ReplaceSectionRaw(1, img_sec_bin);
-
-        unpackVBF();
-
-    } catch (const runtime_error& e) {
-        return e.what();
     }
 
-    return "";
+    //replace vbf image content
+    section.SaveToVector(img_sec_bin);
+    vbf.ReplaceSectionRaw(1, img_sec_bin);
+
+    vbf.SaveToFile(path.toStdString());
+
+    return QString();
+}
+
+void MainWindow::packFinished() {
+
+    unpackVBF(); //reload content
+    reloadGui();
+    enableGui(true);
 }

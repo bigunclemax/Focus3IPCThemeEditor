@@ -44,18 +44,21 @@ private:
         uint16_t height;
         unique_ptr<EIF::EifImageBase> eif;
         QPixmap image_pixmap;
+        bool changed = false;
     };
 
     std::map<int, sPictureIPC> images;
 
-    QString eitTypeToString(uint8_t eif_t);
+    static QString eitTypeToString(uint8_t eif_t);
 
+    void reloadGui();
     void enableGui(bool doEnable);
 
     int exportAll(const QString &dest_dir);
 
+    QString packVBF(const QString &path);
     QString unpackVBF();
-    QString ReplacePicture(int picture_idx, const QString &new_picture_path);
+    QPair<int, QString> ReplacePicture(int picture_idx, const QString &new_picture_path);
 
     static int
     compressVector(const vector<uint8_t> &data, const char *data_name, vector<uint8_t> &compressed_data);
@@ -66,6 +69,8 @@ private:
 
     void unpackFinished();
     void exportFinished();
+    void replaceFinished();
+    void packFinished();
 
     Ui::MainWindow *ui;
 	QLabel *label{};
@@ -77,6 +82,10 @@ private:
     QFuture<int> futureExport;
     QFutureWatcher<QString> watcherUnpack;
     QFutureWatcher<int> watcherExportAll;
+    QFuture<QPair<int, QString>> futureReplace;
+    QFutureWatcher<QPair<int, QString>> watcherReplace;
+    QFuture<QString> futurePack;
+    QFutureWatcher<QString> watcherPack;
 };
 
 #endif // MAINWINDOW_H
