@@ -108,7 +108,17 @@ Date: %2
             return;
         }
     });
-
+    connect(ui->lineEdit_search, &QLineEdit::textEdited,[this]()
+    {
+        auto find_str = ui->lineEdit_search->text().toStdString();
+        for (const auto& it : images) {
+            if (it.second.name.find(find_str) != string::npos) {
+                ui->lw->scrollToItem(ui->lw->item(it.first));
+                ui->lw->item(it.first)->setSelected(true);
+                break;
+            }
+        }
+    });
 	scrollArea = new QScrollArea();
 
 	QSizePolicy sizePolicy = QSizePolicy(QSizePolicy::Expanding, QSizePolicy::Expanding);
@@ -353,6 +363,7 @@ QString MainWindow::eitTypeToString(uint8_t eif_t)
 
 void MainWindow::enableGui(bool doEnable) {
 
+    ui->lineEdit_search->setEnabled(doEnable);
     ui->pushButton_exportAll->setEnabled(doEnable);
     ui->pushButton_exportImage->setEnabled(doEnable);
     ui->pushButton_replaceImage->setEnabled(doEnable);
