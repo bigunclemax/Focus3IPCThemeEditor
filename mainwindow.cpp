@@ -247,48 +247,52 @@ QString MainWindow::unpackVBF() {
 
     images.clear();
 
-    std::vector<uint8_t> img_sec_bin;
-    if(vbf.GetSectionRaw(1, img_sec_bin)) {
-        throw runtime_error("Can't get image section");
-    }
-
-    //parse image section
-    ImageSection section;
-    section.Parse(img_sec_bin);
-
-    int zipped_items = section.GetItemsCount(ImageSection::RT_ZIP);
-
-    for(int i = 0; i < zipped_items; i++) {
-
-        progressChanged({i, zipped_items});
-        auto& picture = images[i];
-
-        // get zipped EIF from image section
-        std::vector<uint8_t> img_zip_bin;
-        section.GetItemData(ImageSection::RT_ZIP, i, img_zip_bin);
-
-        std::string eif_name;
-        auto eif_data = unzipEIF(img_zip_bin, &eif_name);
-
-        picture.eif = EIF::EifConverter::makeEif(static_cast<EIF::EIF_TYPE>(eif_data[7]));
-        picture.eif->openEif(eif_data);
-        auto bitmap = picture.eif->getBitmapRBGA();
-
-        picture.image_pixmap = QPixmap::fromImage(
-                QImage(bitmap.data(), picture.eif->getWidth(), picture.eif->getHeight(),
-                       QImage::Format_RGBA8888).convertToFormat(QImage::Format_ARGB32));
-
-        if (picture.eif->getType() == EIF_TYPE_MULTICOLOR) {
-            auto crc16 = CRC::Calculate((char *) eif_data.data() + 0x10, 768, CRC::CRC_16_CCITTFALSE());
-            picture.palette_crc = crc16;
+    try {
+        std::vector<uint8_t> img_sec_bin;
+        if(vbf.GetSectionRaw(1, img_sec_bin)) {
+            throw runtime_error("Can't get image section");
         }
 
-        picture.index = i;
-        picture.name = eif_name;
-        picture.type = picture.eif->getType();
-        picture.width = picture.eif->getWidth();
-        picture.height = picture.eif->getHeight();
+        //parse image section
+        ImageSection section;
+        section.Parse(img_sec_bin);
 
+        int zipped_items = section.GetItemsCount(ImageSection::RT_ZIP);
+
+        for(int i = 0; i < zipped_items; i++) {
+
+            progressChanged({i, zipped_items});
+            auto& picture = images[i];
+
+            // get zipped EIF from image section
+            std::vector<uint8_t> img_zip_bin;
+            section.GetItemData(ImageSection::RT_ZIP, i, img_zip_bin);
+
+            std::string eif_name;
+            auto eif_data = unzipEIF(img_zip_bin, &eif_name);
+
+            picture.eif = EIF::EifConverter::makeEif(static_cast<EIF::EIF_TYPE>(eif_data[7]));
+            picture.eif->openEif(eif_data);
+            auto bitmap = picture.eif->getBitmapRBGA();
+
+            picture.image_pixmap = QPixmap::fromImage(
+                    QImage(bitmap.data(), picture.eif->getWidth(), picture.eif->getHeight(),
+                           QImage::Format_RGBA8888).convertToFormat(QImage::Format_ARGB32));
+
+            if (picture.eif->getType() == EIF_TYPE_MULTICOLOR) {
+                auto crc16 = CRC::Calculate((char *) eif_data.data() + 0x10, 768, CRC::CRC_16_CCITTFALSE());
+                picture.palette_crc = crc16;
+            }
+
+            picture.index = i;
+            picture.name = eif_name;
+            picture.type = picture.eif->getType();
+            picture.width = picture.eif->getWidth();
+            picture.height = picture.eif->getHeight();
+
+        }
+    } catch (const std::runtime_error& ex) {
+        return ex.what();
     }
 
     return "";
@@ -390,7 +394,7 @@ void MainWindow::unpackFinished() {
     if (!future.result().isEmpty()) {
         QMessageBox(QMessageBox::Warning,
                     "", future.result(), QMessageBox::Ok, this).exec();
-        ui->label_Status->setText(QString("Error"));
+        ui->label_Status->setText(QString("Unpack error"));
         enableGui(true);
         return;
     }
@@ -450,93 +454,108 @@ int MainWindow::exportAll(const QString &dest_dir) {
 
 QPair<int, QString> MainWindow::ReplacePicture(int picture_idx, const QString &new_picture_path) {
 
-    auto& picture = images[picture_idx];
+    try {
+        auto &picture = images[picture_idx];
 
-    auto new_eif = EIF::EifConverter::makeEif(static_cast<EIF::EIF_TYPE>(picture.type));
+        auto new_eif = EIF::EifConverter::makeEif(static_cast<EIF::EIF_TYPE>(picture.type));
 
-    new_eif->openBmp(new_picture_path.toStdString());
+        new_eif->openBmp(new_picture_path.toStdString());
 
-    if (new_eif->getWidth() != picture.width || new_eif->getHeight() != picture.height) {
-        throw runtime_error("Replaced picture size mismatch");
+        if (new_eif->getWidth() != picture.width || new_eif->getHeight() != picture.height) {
+            throw runtime_error("Replaced picture size mismatch");
+        }
+
+        picture.eif = std::move(new_eif);
+        auto bitmap = picture.eif->getBitmapRBGA();
+        picture.image_pixmap = QPixmap::fromImage(
+                QImage(bitmap.data(), picture.eif->getWidth(), picture.eif->getHeight(),
+                       QImage::Format_RGBA8888).convertToFormat(QImage::Format_ARGB32));
+        picture.changed = true;
+    } catch (const std::runtime_error& ex) {
+        return {picture_idx, ex.what()};
     }
-
-    picture.eif = std::move(new_eif);
-    auto bitmap = picture.eif->getBitmapRBGA();
-    picture.image_pixmap = QPixmap::fromImage(
-            QImage(bitmap.data(), picture.eif->getWidth(), picture.eif->getHeight(),
-                   QImage::Format_RGBA8888).convertToFormat(QImage::Format_ARGB32));
-    picture.changed = true;
 
     return {picture_idx, ""};
 }
 
 QString MainWindow::packVBF(const QString &path) {
 
-    // get an image section
-    std::vector<uint8_t> img_sec_bin;
-    if(vbf.GetSectionRaw(1, img_sec_bin)) {
-        throw runtime_error("Can't get image section");
-    }
-    ImageSection section;
-    section.Parse(img_sec_bin);
+    try {
+        // get an image section
+        std::vector<uint8_t> img_sec_bin;
+        if (vbf.GetSectionRaw(1, img_sec_bin)) {
+            throw runtime_error("Can't get image section");
+        }
+        ImageSection section;
+        section.Parse(img_sec_bin);
 
-    // find a changed pictures
-    for (auto &it : images) {
+        // find a changed pictures
+        for (auto &it : images) {
 
-        if (!it.second.changed) continue;
+            if (!it.second.changed) continue;
 
-        auto &orig_picture = it.second;
+            auto &orig_picture = it.second;
 
-        if (0 == orig_picture.palette_crc) {
-            // replaced pic is 8 or 32 bit eif
-            // no additional actions required
-            // just make eif from bmp and replace the
-            // original pic
-            CompressAndReplaceEIF(section, orig_picture.index, orig_picture.eif->saveEifToVector(), orig_picture.name);
-            orig_picture.changed = false;
+            if (0 == orig_picture.palette_crc) {
+                // replaced pic is 8 or 32 bit eif
+                // no additional actions required
+                // just make eif from bmp and replace the
+                // original pic
+                CompressAndReplaceEIF(section, orig_picture.index, orig_picture.eif->saveEifToVector(),
+                                      orig_picture.name);
+                orig_picture.changed = false;
 
-        } else {
-            // replaced pic is definitely 16 bit eif.
-            // 16bits eif may be bonded into a set and share one palette
-            // so we need to recalculate a new palette for each eif included in that set
+            } else {
+                // replaced pic is definitely 16 bit eif.
+                // 16bits eif may be bonded into a set and share one palette
+                // so we need to recalculate a new palette for each eif included in that set
 
 
-            // find all pictures with the same palette
-            vector<EIF::EifImage16bit> eifs_set;
-            vector<int> eifs_set_indexes;
+                // find all pictures with the same palette
+                vector<EIF::EifImage16bit> eifs_set;
+                vector<int> eifs_set_indexes;
 
-            for (auto &itt :images) {
-                auto & picture = itt.second;
-                if(picture.palette_crc == orig_picture.palette_crc) {
-                    picture.changed = false;
-                    eifs_set_indexes.push_back(picture.index);
-                    eifs_set.push_back(*reinterpret_cast<const EIF::EifImage16bit *>(picture.eif.get())); // 🤢
+                for (auto &itt :images) {
+                    auto &picture = itt.second;
+                    if (picture.palette_crc == orig_picture.palette_crc) {
+                        picture.changed = false;
+                        eifs_set_indexes.push_back(picture.index);
+                        eifs_set.push_back(*reinterpret_cast<const EIF::EifImage16bit *>(picture.eif.get())); // 🤢
+                    }
+                }
+
+                // calc new 'multipalette'
+                EIF::EifConverter::mapMultiPalette(eifs_set);
+
+                for (int i = 0; i < eifs_set.size(); ++i) {
+                    auto eif_idx = eifs_set_indexes[i];
+                    progressChanged({i, (int) eifs_set.size()});
+                    CompressAndReplaceEIF(section, eif_idx, eifs_set[i].saveEifToVector(), images[eif_idx].name);
                 }
             }
-
-            // calc new 'multipalette'
-            EIF::EifConverter::mapMultiPalette(eifs_set);
-
-            for (int i =0; i < eifs_set.size(); ++i) {
-                auto eif_idx = eifs_set_indexes[i];
-                progressChanged({i, (int)eifs_set.size()});
-                CompressAndReplaceEIF(section, eif_idx, eifs_set[i].saveEifToVector(), images[eif_idx].name);
-            }
         }
+
+        //replace vbf image content
+        section.SaveToVector(img_sec_bin);
+        vbf.ReplaceSectionRaw(1, img_sec_bin);
+
+        vbf.SaveToFile(path.toStdString());
+    } catch (const std::runtime_error& ex) {
+        return ex.what();
     }
 
-    //replace vbf image content
-    section.SaveToVector(img_sec_bin);
-    vbf.ReplaceSectionRaw(1, img_sec_bin);
-
-    vbf.SaveToFile(path.toStdString());
-
-    return QString();
+    return "";
 }
 
 void MainWindow::packFinished() {
 
-    unpackVBF(); //reload content
-    reloadGui();
-    enableGui(true);
+    if (!futurePack.result().isEmpty()) {
+        QMessageBox(QMessageBox::Warning,
+                    "", futurePack.result(), QMessageBox::Ok, this).exec();
+        ui->label_Status->setText(QString("Pack error"));
+        enableGui(true);
+    } else {
+        future = QtConcurrent::run(this, &MainWindow::unpackVBF);
+        watcherUnpack.setFuture(future);
+    }
 }
