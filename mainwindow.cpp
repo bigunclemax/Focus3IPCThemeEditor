@@ -39,6 +39,7 @@ Date: %2
     connect(ui->actionClose, &QAction::triggered, this, &MainWindow::slotClose);
     connect(ui->actionSave, &QAction::triggered, this, &MainWindow::slotSave);
     connect(ui->actionSave_As, &QAction::triggered, this, &MainWindow::slotSaveAs);
+    connect(ui->actionExit, &QAction::triggered, this, []{QApplication::quit();});
     connect(ui->pushButton_exportAll, QOverload<bool>::of(&QPushButton::clicked),[this]()
     {
         if (images.empty()) return;
