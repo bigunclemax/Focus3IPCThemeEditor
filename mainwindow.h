@@ -7,8 +7,9 @@
 #include <QtConcurrent/QtConcurrent>
 
 #include <VbfFile.h>
-#include <ImageSection.h>
 #include <EifConverter.h>
+
+#include "HeaderObjectsModel.h"
 
 namespace Ui {
 class MainWindow;
@@ -34,6 +35,8 @@ signals:
     void progressChanged(QPoint progress);
 
 private:
+
+    HeaderObjectsModel m_model;
 
     struct sPictureIPC {
         int index;

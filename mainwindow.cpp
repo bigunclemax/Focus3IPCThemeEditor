@@ -14,6 +14,8 @@ MainWindow::MainWindow(QWidget *parent) :
 {
 	ui->setupUi(this);
 
+	ui->tableView->setModel(&m_model);
+
 	ui->statusBar->addPermanentWidget(ui->label_Width);
     ui->statusBar->addPermanentWidget(ui->label_Height);
     ui->statusBar->addPermanentWidget(ui->label_Type);
@@ -254,10 +256,14 @@ QString MainWindow::unpackVBF() {
             throw runtime_error("Can't get image section");
         }
 
-        //parse image section
+        /* parse images section */
         ImageSection section;
         section.Parse(img_sec_bin);
 
+        /* extract header lines */
+        m_model.importLines(section.getHeaderData());
+
+        /* extract images */
         int zipped_items = section.GetItemsCount(ImageSection::RT_ZIP);
 
         for(int i = 0; i < zipped_items; i++) {

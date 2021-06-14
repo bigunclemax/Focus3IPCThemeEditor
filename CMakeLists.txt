@@ -23,10 +23,10 @@ include_directories(FTools/CRCpp/inc)
 
 add_subdirectory(FTools)
 
-add_executable(FocusIPC main.cpp mainwindow.cpp mainwindow.ui)
+add_executable(FocusIPC main.cpp mainwindow.cpp mainwindow.ui HeaderObjectsModel.cpp)
 add_dependencies(FocusIPC check_git)
 
-target_link_libraries(${CMAKE_PROJECT_NAME} Qt5::Widgets)
+target_link_libraries(${CMAKE_PROJECT_NAME} Qt5::Widgets Qt5::Core)
 target_link_libraries(${CMAKE_PROJECT_NAME} vbf imgsec eif miniz)
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
     add_compile_options(-Werror=vla)
@@ -35,7 +35,5 @@ endif()
 if(WIN32)
     set_property(TARGET FocusIPC PROPERTY WIN32_EXECUTABLE true)
 endif()
-
-qt5_use_modules(${CMAKE_PROJECT_NAME} Core)
 
 install(TARGETS FocusIPC)
