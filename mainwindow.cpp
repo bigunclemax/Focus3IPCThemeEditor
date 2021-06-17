@@ -496,6 +496,9 @@ QString MainWindow::packVBF(const QString &path) {
         ImageSection section;
         section.Parse(img_sec_bin);
 
+        // setup head objects
+        section.setHeaderData(m_model.exportLines());
+
         // find a changed pictures
         for (auto &it : images) {
 

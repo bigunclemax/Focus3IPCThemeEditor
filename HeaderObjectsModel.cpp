@@ -65,13 +65,73 @@ QVariant HeaderObjectsModel::headerData(int section, Qt::Orientation orientation
 }
 
 Qt::ItemFlags HeaderObjectsModel::flags(const QModelIndex &index) const {
-    return /*Qt::ItemIsEditable |*/ QAbstractTableModel::flags(index);
+    return Qt::ItemIsEditable | QAbstractTableModel::flags(index);
 }
 
 bool HeaderObjectsModel::setData(const QModelIndex &index, const QVariant &value, int role) {
     if (role == Qt::EditRole) {
         if (!checkIndex(index))
             return false;
+
+        bool ok;
+        uint32_t v = value.toUInt(&ok);
+        if (!ok)
+            return false;
+
+        switch (index.column()) {
+            case width :
+                m_lines[index.row()].width = v;
+                break;
+            case height :
+                m_lines[index.row()].height = v;
+                break;
+            case X :
+                m_lines[index.row()].X = v;
+                break;
+            case Y :
+                m_lines[index.row()].Y = v;
+                break;
+            case type :
+                if(v > std::numeric_limits<uint8_t>::max())
+                    return false;
+                m_lines[index.row()].type = v;
+                break;
+            case z :
+                if(v > std::numeric_limits<uint8_t>::max())
+                    return false;
+                m_lines[index.row()].Z = v;
+                break;
+            case intensity :
+                if(v > std::numeric_limits<uint8_t>::max())
+                    return false;
+                m_lines[index.row()].intensity = v;
+                break;
+            case R :
+                if(v > std::numeric_limits<uint8_t>::max())
+                    return false;
+                m_lines[index.row()].R = v;
+                break;
+            case G :
+                if(v > std::numeric_limits<uint8_t>::max())
+                    return false;
+                m_lines[index.row()].G = v;
+                break;
+            case B :
+                if(v > std::numeric_limits<uint8_t>::max())
+                    return false;
+                m_lines[index.row()].B = v;
+                break;
+            case A :
+                if(v > std::numeric_limits<uint8_t>::max())
+                    return false;
+                m_lines[index.row()].palette_id = v;
+                break;
+            default:
+                return false;
+        }
+
+        return true;
+
     }
     return false;
 }
@@ -81,4 +141,8 @@ void HeaderObjectsModel::importLines(const vector<ImageSection::HeaderRecord> &d
     m_lines = data;
     beginResetModel();
     endResetModel();
+}
+
+const vector<ImageSection::HeaderRecord> &HeaderObjectsModel::exportLines() const {
+    return m_lines;
 }
