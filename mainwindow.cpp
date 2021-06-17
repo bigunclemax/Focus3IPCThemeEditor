@@ -111,6 +111,28 @@ Date: %2
             return;
         }
     });
+    connect(ui->pushButton_exportCSV, QOverload<bool>::of(&QPushButton::clicked),[this]()
+    {
+        auto suggested_name = fs::path(vbfPath.toStdString()).stem().concat("_objects.csv");
+        auto store_path = QFileDialog::getSaveFileName(this, tr("Export objects"),
+                                                       suggested_name.c_str(),
+                                                       tr("CSV (*.csv);;All Files (*)"));
+
+        if (store_path.isEmpty())
+            return;
+
+        ImageSection::HeaderToCsv(m_model.exportLines(), store_path.toStdString());
+    });
+    connect(ui->pushButton_importCSV, QOverload<bool>::of(&QPushButton::clicked),[this]()
+    {
+        auto path = QFileDialog::getOpenFileName(this,
+                                               tr("Open objects CSV"), "", tr("CSV (*.csv)"));
+
+        if(vbfPath.isEmpty())
+            return;
+
+        m_model.importLines(ImageSection::HeaderFromCsv(path.toStdString()));
+    });
     connect(ui->lineEdit_search, &QLineEdit::textEdited,[this]()
     {
         auto find_str = ui->lineEdit_search->text().toStdString();
@@ -167,6 +189,7 @@ void MainWindow::slotClose() {
 
     if(vbf.IsOpen()) {
 
+        m_model.importLines(vector <ImageSection::HeaderRecord>()); // cleanup objects model content
         images.clear();
 
         ui->lw->clear();
@@ -381,6 +404,7 @@ void MainWindow::enableGui(bool doEnable) {
     ui->actionSave->setEnabled(doEnable);
     ui->actionSave_As->setEnabled(doEnable);
     ui->actionClose->setEnabled(doEnable);
+    ui->tab_lines->setEnabled(doEnable);
 }
 
 void MainWindow::reloadGui() {
