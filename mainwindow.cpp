@@ -115,7 +115,7 @@ Date: %2
     {
         auto suggested_name = fs::path(vbfPath.toStdString()).stem().concat("_objects.csv");
         auto store_path = QFileDialog::getSaveFileName(this, tr("Export objects"),
-                                                       suggested_name.c_str(),
+                                                       suggested_name.string().c_str(),
                                                        tr("CSV (*.csv);;All Files (*)"));
 
         if (store_path.isEmpty())
@@ -337,13 +337,13 @@ int MainWindow::compressVector(const std::vector<uint8_t> &data, const char *dat
 
     status = mz_zip_writer_init_heap(&zip_archive, 0, 0);
     if (!status) {
-        cerr << "mz_zip_writer_init_heap failed!";
+        qWarning("mz_zip_writer_init_heap failed!");
         return -1;
     }
 
     status = mz_zip_writer_add_mem_ex(&zip_archive, data_name, (void*)data.data(), data.size(), "", 0, flags, 0, 0);
     if (!status) {
-        cerr << "mz_zip_writer_add_mem_ex failed!";
+        qWarning("mz_zip_writer_add_mem_ex failed!");
         return -1;
     }
 
@@ -351,7 +351,7 @@ int MainWindow::compressVector(const std::vector<uint8_t> &data, const char *dat
     void *pBuf;
     status = mz_zip_writer_finalize_heap_archive(&zip_archive, &pBuf, &size);
     if (!status) {
-        cerr << "mz_zip_writer_finalize_heap_archive failed!";
+        qWarning("mz_zip_writer_finalize_heap_archive failed!");
         return -1;
     }
 
@@ -361,7 +361,7 @@ int MainWindow::compressVector(const std::vector<uint8_t> &data, const char *dat
 
     status = mz_zip_writer_end(&zip_archive);
     if (!status) {
-        cerr << "mz_zip_writer_end failed!";
+        qWarning("mz_zip_writer_end failed!");
         return -1;
     }
 
@@ -382,7 +382,7 @@ void MainWindow::CompressAndReplaceEIF(ImageSection& img_sec, int idx, const vec
     //replace
     img_sec.ReplaceItem(ImageSection::RT_ZIP, idx, zip_bin,
                         eif_header_p->width, eif_header_p->height, eif_header_p->type);
-    cout << "Replace eif " << res_name << endl;
+    qDebug() << "Replace eif " << res_name.c_str();
 }
 
 QString MainWindow::eitTypeToString(uint8_t eif_t)
