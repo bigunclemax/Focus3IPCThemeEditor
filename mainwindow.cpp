@@ -74,7 +74,12 @@ Date: %2
 
             if (store_path.isEmpty()) return;
 
-            picture.eif->saveBmp(store_path.toStdString());
+            try {
+                picture.eif->saveBmp(store_path.toStdWString());
+            }
+            catch (const runtime_error& ex) {
+                QMessageBox(QMessageBox::Warning, "", ex.what(), QMessageBox::Ok, this).exec();
+            }
         }
     });
     connect(ui->pushButton_replaceImage, QOverload<bool>::of(&QPushButton::clicked),[this]()
@@ -106,14 +111,14 @@ Date: %2
             watcherReplace.setFuture(futureReplace);
 
         } catch (const std::runtime_error& ex) {
-            QMessageBox(QMessageBox::Information,
+            QMessageBox(QMessageBox::Warning,
                         "", ex.what(), QMessageBox::Ok, this).exec();
             return;
         }
     });
     connect(ui->pushButton_exportCSV, QOverload<bool>::of(&QPushButton::clicked),[this]()
     {
-        auto suggested_name = fs::path(vbfPath.toStdString()).stem().concat("_objects.csv");
+        auto suggested_name = fs::path(vbfPath.toStdWString()).stem().concat("_objects.csv");
         auto store_path = QFileDialog::getSaveFileName(this, tr("Export objects"),
                                                        suggested_name.string().c_str(),
                                                        tr("CSV (*.csv);;All Files (*)"));
@@ -121,7 +126,7 @@ Date: %2
         if (store_path.isEmpty())
             return;
 
-        ImageSection::HeaderToCsv(m_model.exportLines(), store_path.toStdString());
+        ImageSection::HeaderToCsv(m_model.exportLines(), store_path.toStdWString());
     });
     connect(ui->pushButton_importCSV, QOverload<bool>::of(&QPushButton::clicked),[this]()
     {
@@ -131,7 +136,13 @@ Date: %2
         if(vbfPath.isEmpty())
             return;
 
-        m_model.importLines(ImageSection::HeaderFromCsv(path.toStdString()));
+        try {
+            m_model.importLines(ImageSection::HeaderFromCsv(path.toStdWString()));
+        } catch (const std::runtime_error& ex) {
+            QMessageBox(QMessageBox::Warning,
+                        "", ex.what(), QMessageBox::Ok, this).exec();
+            return;
+        }
     });
     connect(ui->lineEdit_search, &QLineEdit::textEdited,[this]()
     {
@@ -170,10 +181,7 @@ void MainWindow::slotOpen()
 
     try {
         //unpack vbf and get section with image resources
-        vbf.OpenFile(vbfPath.toStdString());
-        if(!vbf.IsOpen()) {
-            throw runtime_error("Can't parse VBF");
-        }
+        vbf.OpenFile(vbfPath.toStdWString());
 
         enableGui(false);
         future = QtConcurrent::run(this, &MainWindow::unpackVBF);
@@ -462,6 +470,10 @@ void MainWindow::replaceFinished() {
 
 void MainWindow::exportFinished() {
 
+    const auto &res = futureExport.result();
+    if (res) {
+        QMessageBox(QMessageBox::Warning, "", "Export error", QMessageBox::Ok, this).exec();
+    }
     enableGui(true);
     ui->label_Status->setText(QString("Done"));
 }
@@ -476,8 +488,14 @@ int MainWindow::exportAll(const QString &dest_dir) {
     const int pics_count = images.size();
     for(const auto& picture :images) {
         progressChanged({i++, pics_count});
-        fs::path store_path(dest_dir.toStdString() / fs::path(picture.second.name).replace_extension(".bmp"));
-        picture.second.eif->saveBmp(store_path);
+        fs::path store_path(dest_dir.toStdWString() / fs::path(picture.second.name).replace_extension(".bmp"));
+        try {
+            picture.second.eif->saveBmp(store_path);
+        }
+        catch (const runtime_error& ex) {
+            qWarning() << ex.what();
+            return -1;
+        }
     }
 
     return 0;
@@ -490,7 +508,7 @@ QPair<int, QString> MainWindow::ReplacePicture(int picture_idx, const QString &n
 
         auto new_eif = EIF::EifConverter::makeEif(static_cast<EIF::EIF_TYPE>(picture.type));
 
-        new_eif->openBmp(new_picture_path.toStdString());
+        new_eif->openBmp(new_picture_path.toStdWString());
 
         if (new_eif->getWidth() != picture.width || new_eif->getHeight() != picture.height) {
             throw runtime_error("Replaced picture size mismatch");
@@ -573,7 +591,7 @@ QString MainWindow::packVBF(const QString &path) {
         section.SaveToVector(img_sec_bin);
         vbf.ReplaceSectionRaw(1, img_sec_bin);
 
-        vbf.SaveToFile(path.toStdString());
+        vbf.SaveToFile(path.toStdWString());
     } catch (const std::runtime_error& ex) {
         return ex.what();
     }
